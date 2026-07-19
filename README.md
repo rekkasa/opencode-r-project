@@ -162,6 +162,55 @@ When you confirm the feature is done, `OBJECTIVES.md` is flipped
 to `Status: completed` and moved to `.project/ARCHIVE/`, along
 with `ISSUES.md` if its entries are resolved.
 
+## How Testing Works
+
+Developer and tester run on the same model, so their mistakes can
+correlate: a model that misremembers, say, which denominator
+`sd()` uses would write code with that bug *and* a test expecting
+the same wrong number. Green checkmark, bug ships. Every test's
+weak point is its **oracle** — wherever the expected value came
+from — so the pipeline builds tests in three tiers, ordered by how
+contamination-resistant that source is:
+
+**Tier 1 — Properties and metamorphic relations (written first).**
+Assertions with no computed expected value at all: row counts
+preserved, results within documented bounds, invariance under row
+shuffling, spread unchanged by adding a constant, group means
+between group min and max, errors raised where the spec says so.
+Nothing was computed, so no misconception can hide in the
+expectation. These catch implementation slips (NA handling, join
+duplication, order dependence) cheaply.
+
+**Tier 2 — Exact values anchored on the plan's Worked Examples.**
+The architect (a *different model* from the developer/tester pair)
+must include 1–2 tiny hand-derived input → output examples per
+exported function in Module Specs. The tester turns them into
+assertions verbatim, never recomputing them. Exact-value checks
+are thereby anchored on a second head — this is what catches
+shared *conceptual* errors, which sail through Tier 1.
+
+**Tier 3 — Exact values with an independent-path oracle.** For
+cases beyond the examples, the tester computes `expected =` via
+plain base R and explicit formulas — a deliberately different
+route from the tidyverse implementation (see §1.9 of
+`STYLE_GUIDE.md` for this carve-out). Both routes would need the
+same bug to agree wrongly.
+
+The tester may never assert an exact value from its own unaided
+arithmetic; if a value can't be grounded in Tier 2 or 3, it writes
+a Tier 1 property instead.
+
+**When the anchors disagree**, the disagreement is surfaced, not
+smoothed over. If a Worked-Example test fails, the tester
+recomputes the value independently and takes a three-way vote:
+recomputation + spec vs. code → ordinary code bug; recomputation +
+code vs. spec → the *example* is suspect, logged under
+`Spec Example Conflicts`, and the project manager halts (even in
+autopilot) for a human ruling rather than entering the fix loop.
+Two models disagreeing loudly is the system working; the failure
+mode this design exists to prevent is them agreeing quietly on the
+same mistake.
+
 ### Domain Boundaries
 
 - R Developer: reads test files but must never create or modify

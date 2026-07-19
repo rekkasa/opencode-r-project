@@ -61,3 +61,8 @@ Always prefer tidyverse equivalents. No exceptions.
 ### 1.8 Line length
 - Maximum **80 characters** per line. 
 - Break long lines using `|>` chains, multi-line argument lists, or intermediate assignments.
+
+### 1.9 Oracle exception (test files only)
+- Inside `tests/testthat/`, the **expected-value computation** of an assertion may use plain base R (`mean()`, `sum()`, explicit formulas, `[` indexing, `aggregate()`) instead of the tidyverse mappings in 1.3.
+- Rationale: a test oracle should reach the same quantity by a *different route* than the implementation under test. If both are written with the same functions, a shared bug can pass silently.
+- This exception covers **only** the `expected =` computation. Fixtures, scaffolding, and all other test code follow every other rule in this guide.

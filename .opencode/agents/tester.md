@@ -46,6 +46,16 @@ implementation code. Apply proactively; never ask permission.
 8. **Booleans:** `TRUE` / `FALSE` written out. Never `T` / `F`.
 9. **Line length:** 80 characters maximum.
 
+**Oracle exception (tests only):** when computing an EXPECTED value inside
+a test, you may — and should — use plain base R (`mean()`, `sum()`,
+`sqrt()`, `[` indexing, `aggregate()`, explicit formulas) instead of the
+tidyverse mappings in rule 4. The point of an oracle is to reach the same
+quantity by a DIFFERENT route than the implementation; if the oracle is
+written with the same functions as the code under test, a shared bug can
+hide in both. This exception covers only the expected-value computation.
+Test scaffolding, fixtures, and everything else in the test file still
+follow all nine rules.
+
 ## Domain boundary and quality gate
 
 **CRITICAL:** You write tests, execute them, and serve as the quality gate.
@@ -78,10 +88,37 @@ only as needed.
    pre-existing failures, then extend the file with new `test_that()`
    blocks. If the file does not exist, create it.
 
-2. Cover: the documented Returns for valid input, each documented Errors
-   condition, and any edge cases implied by the Args types. Create any test
-   fixtures, mock data, and helper setup (e.g. `tests/testthat/setup.R`)
-   needed.
+2. Build coverage in this order of preference. The ranking exists because
+   each tier's expected values come from a more contamination-resistant
+   source than the tier below it:
+
+   **Tier 1 — Property and metamorphic tests (write these first).**
+   Assertions that need no computed expected value at all: output shape
+   and row counts; results within documented bounds; invariance under row
+   shuffling or duplication; scaling/shift relations (e.g. spread
+   unchanged by adding a constant); probabilities summing to 1; group
+   results lying between group min and max; each documented Errors
+   condition raising the right error. Aim for 2–4 of these per exported
+   function wherever the spec supports them.
+
+   **Tier 2 — Exact-value tests anchored on the spec's Worked Examples.**
+   Turn every Worked Example in the Module Specs into an assertion,
+   verbatim: same input, `expected =` the spec's stated output. Do NOT
+   recompute or "correct" the spec's value — its independence from you is
+   the point.
+
+   **Tier 3 — Exact-value tests with an independent-path oracle.** For
+   cases beyond the Worked Examples, compute `expected =` inline via base
+   R / explicit formulas (see the oracle exception above), a deliberately
+   different route from the tidyverse implementation.
+
+   **Never** assert an exact expected value produced by your own unaided
+   arithmetic with no spec example and no independent-path computation
+   behind it. If you cannot ground a value in Tier 2 or Tier 3, write a
+   Tier 1 property instead.
+
+   Create any fixtures, mock data, and helper setup
+   (e.g. `tests/testthat/setup.R`) needed. Keep fixtures tiny.
 
 3. Mark each `[TEST]` checklist item `[x]` to indicate the test file is
    ready.
@@ -120,6 +157,21 @@ only as needed.
    - Record in `## Test Results / Code Bugs` with: test file, line,
      assertion, expected vs. actual, and the function name.
 
+   **Spec example conflict** (special case — three-way disagreement
+   check): when a Tier 2 test fails, recompute the same expected value
+   yourself via an independent base-R path before classifying. Then:
+   - Your recomputation agrees with the SPEC, code disagrees → ordinary
+     code bug (two independent sources against one).
+   - Your recomputation agrees with the CODE, spec disagrees → the
+     Worked Example itself is suspect. Do NOT classify as a code bug and
+     do NOT change the test to match the code. Record it under
+     `## Test Results / Spec Example Conflicts` with the function, the
+     spec's value, the code's value, and your recomputation — this
+     escalates to the human, because two heads disagreeing loudly is the
+     system working, and silently siding with either one defeats it.
+   - All three disagree → code bug, and note the spec discrepancy in the
+     same entry.
+
    After fixing all test bugs, re-run the per-task tests. If they pass,
    proceed to step 5 (full suite). If code bugs remain, proceed to step 7.
 
@@ -144,6 +196,11 @@ only as needed.
    #### Test Bugs (self-fixed)
    [One line each: test file, line, what changed, why. Flag changed
     expected values with ***EXPECTED VALUE CHANGED***.]
+
+   #### Spec Example Conflicts
+   [One line each: <function>() — spec says <X>, code says <Y>,
+    independent recomputation says <Z>. Only when a Worked Example is
+    suspect; needs a human decision, not a fix cycle.]
 
    #### Pre-existing Failures
    [One line each. Only if a baseline run found failures not caused by

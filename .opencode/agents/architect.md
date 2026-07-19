@@ -66,7 +66,7 @@ EXACTLY this structure:
 ## File Layout
 ## Module Specs
 [For each file, list Exported functions, Args (with types), Returns, Errors,
-Internal helpers, and step-by-step Pseudocode.]
+Internal helpers, step-by-step Pseudocode, and Worked Examples.]
 ## Data Flow
 ## Execution Checklist
 [A numbered checklist divided into three phases:
@@ -82,6 +82,27 @@ Internal helpers, and step-by-step Pseudocode.]
    N. [ ] [TEST] test-<module>.R: test <function>() <description>
    N. [ ] [TEST] test-<module>.R: run testthat::test_file() and verify all pass]
 ```
+
+**Worked Examples (MANDATORY for every exported function).** Under each
+exported function's spec, include 1–2 concrete input → output examples:
+
+```
+Worked Examples:
+  1. f(x = c(2, 4, 6), na_rm = TRUE)  ->  2
+  2. f(x = c(5, NA), na_rm = FALSE)   ->  NA
+```
+
+Rules for these examples:
+- Inputs must be TINY (3–6 values) so the expected output can be derived
+  by hand, step by step, from the Pseudocode. Derive it carefully; do not
+  guess. Show exact values (e.g. `1.6329932` not `~1.63`), or the exact
+  error condition for an Errors example.
+- Prefer inputs that exercise the interesting branch (an NA, a tie, an
+  empty group), not just the happy path.
+- These examples are the independent anchor the Tester's exact-value
+  assertions are built on. They are the single most leveraged lines in
+  the plan — a wrong example sends the whole fix loop chasing a phantom
+  bug, so double-check the arithmetic before writing it down.
 
 **Scope discipline.** A task file should cover roughly 2–3 modules. Every
 downstream agent reads this plan in full, so an oversized plan is paid for

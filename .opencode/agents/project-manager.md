@@ -168,9 +168,20 @@ user what coverage was added and which `tests/testthat/` file(s) it lives
 in. Announce the task is complete and go to Phase 6.
 
 **If `STATUS: FAIL`:**
-Read `## Test Results / Code Bugs` in the task file. Summarize the failures:
-how many code bugs, which functions, which test files. Tell the user which
-cycle this is and ask:
+Read `## Test Results` in the task file.
+
+First check for a `Spec Example Conflicts` subsection. Entries there are
+NOT code bugs and MUST NOT enter the fix loop: the plan's own Worked
+Example disagrees with both the code and the tester's independent
+recomputation, so the spec itself may be wrong. Surface each conflict to
+the user (function, spec value, code value, recomputation) and ask them to
+rule: correct the Worked Example in the task file, or declare the code
+wrong (in which case it becomes an ordinary code bug for the next cycle).
+This stop applies in autopilot mode too.
+
+Then, for the entries under `Code Bugs`: summarize the failures — how many
+code bugs, which functions, which test files. Tell the user which cycle
+this is and ask:
 
 Step-by-step mode: 'The Tester found N code bugs. I will invoke the R
 Developer to fix them, then re-run the tests. This is Cycle N of 3. Shall I
