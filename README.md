@@ -17,15 +17,34 @@ ln -s ~/my-skills/.config/opencode/skills/grill-me ~/.config/opencode/skills/gri
 
 ## How This Works
 
-Opencode loads `opencode.jsonc` at the project root, which sets
-`project-lead` as the default agent. That agent orchestrates a
-pipeline of subagents — each with a strict domain boundary —
-guided by skills loaded from `~/.config/opencode/skills/`.
+The workflow runs as **two separate sessions**, so that the
+interview transcript never weighs down the orchestration context.
+
+```
+Session 1:  opencode --agent interviewer
+            grill -> .project/OBJECTIVES.md (+ ARCHITECTURE.md), then stop
+
+Session 2:  opencode                        (project-manager is default)
+            architect -> r-developer -> tester -> archive objectives
+```
+
+`.project/OBJECTIVES.md` is the only thing that crosses between
+them. It carries a `Status: active` header; the project manager
+flips it to `completed` and moves it to `.project/ARCHIVE/` when
+the feature is done, so "no active objectives" stays detectable.
+
+Start the interviewer directly whenever you know you are beginning
+a new objective — it handles whatever state the objectives file is
+in. If you start the project manager by mistake, its Phase 0 check
+redirects you rather than improvising objectives.
 
 The pipeline turns a natural-language description into a
 grilled-down specification, an implementation plan, working R
 code, and a test suite, all following the conventions in
 `.project/STYLE_GUIDE.md`.
+
+See `CHANGES.md` for the full rationale behind the current
+structure, including the prompt-caching setup in `opencode.jsonc`.
 
 ## Prerequisites
 
@@ -59,6 +78,11 @@ code, and a test suite, all following the conventions in
      ~/.config/opencode/skills/grill-me
    ```
 
+   Note: `r-developer` and `tester` no longer load the `r-style`
+   skill — the rules are inlined in their prompts so they cost no
+   extra round trip. The symlink is still worth keeping for ad-hoc
+   R work outside the pipeline.
+
 ## Project Structure
 
 ```
@@ -73,7 +97,8 @@ code, and a test suite, all following the conventions in
 │   └── ISSUES.md                   [runtime] Blocker log
 └── .opencode/
     ├── agents/
-    │   ├── project-lead.md         Orchestrator (primary agent)
+    │   ├── interviewer.md          Scope definer (primary agent)
+    │   ├── project-manager.md      Orchestrator (primary, default)
     │   ├── architect.md            Systems architect subagent
     │   ├── r-developer.md          Implementation engineer subagent
     │   └── tester.md               Test engineer subagent
@@ -82,37 +107,47 @@ code, and a test suite, all following the conventions in
 
 ## Agent Pipeline
 
-The workflow is a fixed linear pipeline driven by `project-lead`,
-which gates every handoff behind user approval.
+The workflow is a fixed linear pipeline split across two
+sessions. The project manager offers two run modes at startup:
+**step-by-step** (approve every handoff) or **autopilot** (approve
+the plan once, then run straight through, stopping only for real
+decisions).
 
-### Phase 1: Grill
+### Session 1 — Interviewer
 
-`project-lead` interviews you relentlessly, one question at a
-time, until every branch of the design tree is resolved. Coding
-style questions are never asked — `.project/STYLE_GUIDE.md` is
-treated as settled law.
+`interviewer` grills you relentlessly, one question at a time,
+until every branch of the design tree is resolved. Coding style
+questions are never asked — `.project/STYLE_GUIDE.md` is treated
+as settled law.
 
-### Phase 2: Objectives
+The result is synthesized into `.project/OBJECTIVES.md` (feature
+spec, stamped `Status: active`) and, if it does not yet exist,
+`.project/ARCHITECTURE.md`. Then the session ends. The interviewer
+has the subagent dispatcher disabled, so it cannot start the
+pipeline itself.
 
-The shared understanding is synthesized into
-`.project/OBJECTIVES.md` (feature spec) and, if it does not yet
-exist, `.project/ARCHITECTURE.md` (module-level design decisions).
+### Session 2 — Project Manager
 
-### Phase 3: Architect
+`project-manager` (the default agent) reads the objectives cold,
+confirms the active feature with you, and drives the rest.
+
+#### Architect
 
 The `architect` subagent is dispatched to read OBJECTIVES.md and
 write `.project/TASKS/<task>.md`. The output includes typed
 function signatures, pseudocode, a file layout, data flow, and an
 execution checklist split into `[IMPL]` and `[TEST]` items.
 
-### Phase 4: R Developer
+#### R Developer
 
 The `r-developer` subagent executes only `[IMPL]` checklist items.
-It reads STYLE_GUIDE.md before writing any code, runs smoke tests
-via `source()` on every modified file, and must never touch
-`tests/testthat/`.
+The style rules are inlined in its prompt, so it reads only the
+task file. It runs smoke tests via `source()` on every modified
+file, and must never touch `tests/testthat/`. When re-invoked to
+fix code bugs it reads only the `## Code Bug Fixes` section, the
+named failing tests, and the named `R/` files.
 
-### Phase 5: Tester
+#### Tester
 
 The `tester` subagent writes `[TEST]` items, executes them with
 `testthat::test_file()`, runs the full suite as a regression gate,
@@ -121,12 +156,19 @@ attempts) or code bugs (escalated back to the R Developer). The
 fix loop between R Developer and Tester runs up to 3 cycles. On
 exhaustion, the deadlock is logged to `.project/ISSUES.md`.
 
+#### Close-out
+
+When you confirm the feature is done, `OBJECTIVES.md` is flipped
+to `Status: completed` and moved to `.project/ARCHIVE/`, along
+with `ISSUES.md` if its entries are resolved.
+
 ### Domain Boundaries
 
 - R Developer: reads test files but must never create or modify
   them
 - Tester: reads implementation files but must never modify them
-- Project Lead: the only agent that interacts with the user
+- Interviewer: talks to you, writes objectives, dispatches nothing
+- Project Manager: dispatches subagents, writes no code or tests
 
 ## Skills
 
@@ -140,10 +182,12 @@ their trigger phrases match.
 | `code-implementation-plan` | Turns OBJECTIVES.md into `.project/TASKS/<task>.md` |
 | `r-style` | Enforces R code conventions on all `.R`, `.qmd`, and `.Rmd` files |
 
-> **Sync note:** `r-style` SKILL.md and `.project/STYLE_GUIDE.md`
-> are near-duplicates. STYLE_GUIDE.md is the canonical source
-> checked into this repo; `r-style` SKILL.md is the copy opencode
-> loads at runtime. When conventions change, update both.
+> **Sync note:** the R style rules now live in three places:
+> `.project/STYLE_GUIDE.md` (canonical, for humans), the `r-style`
+> skill (for ad-hoc R work outside the pipeline), and inlined in
+> `r-developer.md` and `tester.md` (so the pipeline agents pay no
+> round trip to fetch them). When conventions change, update all
+> three. See `CHANGES.md` for why.
 
 ## Workspace Lifecycle
 
@@ -152,27 +196,31 @@ their trigger phrases match.
 1. Copy this opencode config into the project (or keep this repo
    as a standalone setup and reference it).
 2. Ensure skills are symlinked into `~/.config/opencode/skills/`.
-3. Launch opencode in the project directory — `project-lead`
-   activates automatically.
+3. Run `opencode --agent interviewer` in the project directory.
 
 ### Working Through a Feature
 
-1. Describe the task to project-lead. It initiates the grill
-   session.
-2. After the grill, objectives are captured, then the architect
-   writes an implementation plan.
-3. On approval, the R Developer implements the code.
-4. After implementation, the Tester writes and verifies tests.
-5. Repeat for the next feature.
+1. `opencode --agent interviewer` — grill session, objectives
+   written, session ends.
+2. `opencode` — the project manager confirms the feature, asks for
+   a run mode, and dispatches the architect.
+3. Approve the plan. The R Developer implements it.
+4. The Tester writes and verifies tests, with up to 3 fix cycles.
+5. Confirm the feature is done — objectives are archived
+   automatically.
 
 ### Resetting After a Feature
 
-- Delete or archive `.project/OBJECTIVES.md`.
-- Clear `.project/TASKS/` of completed task files.
-- `.project/ARCHITECTURE.md` persists across features — it
-  accumulates module-level design decisions. The project-lead
-  updates it after each task if new modules or structural changes
-  were introduced.
+Handled for you. On close-out the project manager archives
+`OBJECTIVES.md` (and `ISSUES.md`) into `.project/ARCHIVE/`. Clear
+`.project/TASKS/` of completed task files yourself when it gets
+cluttered.
+
+`.project/ARCHITECTURE.md` persists across features. The project
+manager revises it in place after each task when new modules or
+structural changes are introduced, keeping it under ~100 lines —
+it is read on every planning run, so it is not allowed to grow
+without bound.
 
 ## Modifying This Setup
 
